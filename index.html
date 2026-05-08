@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Honeypot Threat Monitor</title>
+<title>Muck's Honeypot Monitor</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -75,7 +75,7 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 <body>
 
 <div id="loading">
-  <div class="load-title">HONEYPOT MONITOR</div>
+  <div class="load-title">MUCK'S HONEYPOT MONITOR</div>
   <div class="load-sub">THREAT INTELLIGENCE SYSTEM</div>
   <div class="load-bar"><div class="load-prog" id="prog"></div></div>
   <div id="load-msg">INITIALIZING...</div>
@@ -84,7 +84,7 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 <div id="app">
   <header>
     <div class="hdr-top">
-      <span class="title">HONEYPOT MONITOR</span>
+      <span class="title">MUCK'S HONEYPOT MONITOR</span>
       <div class="live-badge"><div class="live-dot"></div>LIVE</div>
     </div>
     <div class="stats-bar">
@@ -128,7 +128,7 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 </div>
 
 <script>
-const PROXY = 'http://178.105.91.221:8080';
+const PROXY = 'https://178.105.91.221:8080';
 const SERVER_LL = [49.45, 11.07];
 
 let map, geoCache = {}, allAlerts = [], animTimer;
