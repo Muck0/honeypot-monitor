@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Honeypot Threat Monitor</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050a0f;--bg2:#081420;--bg3:#0c1d2e;
+  --green:#00ff88;--cyan:#00d9ff;--red:#ff2d55;--orange:#ff9f0a;
+  --text:#8892a4;--bright:#cdd6f4;--border:#1a2d3f;
+}
+body{background:var(--bg);color:var(--bright);font-family:'Share Tech Mono',monospace;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);pointer-events:none;z-index:9999}
+
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10000;gap:16px}
+.load-title{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;color:var(--green);letter-spacing:4px;text-shadow:0 0 20px rgba(0,255,136,.4)}
+.load-sub{font-size:11px;color:var(--text);letter-spacing:3px}
+.load-bar{width:320px;height:2px;background:var(--border);overflow:hidden;border-radius:2px}
+.load-prog{height:100%;background:var(--green);box-shadow:0 0 8px var(--green);transition:width .3s ease;width:0%}
+#load-msg{font-size:12px;color:var(--text);letter-spacing:1px;min-height:18px}
+
+header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px solid var(--border);padding:10px 16px;flex-shrink:0}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.title{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--green);letter-spacing:3px;text-shadow:0 0 15px rgba(0,255,136,.3)}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--red);letter-spacing:2px}
+.live-dot{width:7px;height:7px;background:var(--red);border-radius:50%;animation:blink 1s ease-in-out infinite;box-shadow:0 0 6px var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.stats-bar{display:flex;gap:24px;font-size:11px;color:var(--text);margin-bottom:8px;flex-wrap:wrap}
+.stat-val{color:var(--cyan);font-size:15px;font-weight:bold}
+
+.tabs{display:flex;gap:2px}
+.tab{background:transparent;border:1px solid var(--border);color:var(--text);padding:5px 18px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:2px;transition:all .2s}
+.tab.active{background:rgba(0,255,136,.08);border-color:var(--green);color:var(--green)}
+.tab:hover:not(.active){border-color:var(--text);color:var(--bright)}
+
+#tab-map{display:flex;flex:1;overflow:hidden}
+#map{flex:1;z-index:1}
+.leaflet-container{background:#020810}
+.leaflet-popup-content-wrapper{background:#0c1d2e;border:1px solid var(--border);color:var(--bright);border-radius:4px}
+.leaflet-popup-tip{background:#0c1d2e}
+
+.sidebar{width:260px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-hdr{padding:9px 12px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:2px;color:var(--green)}
+.attack-log{flex:1;overflow-y:auto;padding:6px}
+.attack-log::-webkit-scrollbar{width:3px}
+.attack-log::-webkit-scrollbar-track{background:var(--bg)}
+.attack-log::-webkit-scrollbar-thumb{background:var(--border)}
+.entry{padding:6px 8px;border-bottom:1px solid rgba(26,45,63,.5);font-size:11px;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.e-ip{color:var(--red);font-size:12px}
+.e-loc{color:var(--orange);font-size:10px;margin-top:2px}
+.e-isp{color:var(--cyan);font-size:10px;word-break:break-all;margin-top:1px}
+.e-type{color:var(--text);font-size:10px;margin-top:1px}
+.e-time{color:#556070;font-size:10px;margin-top:1px}
+
+#tab-analytics{display:none;flex:1;overflow-y:auto;padding:16px;gap:16px;grid-template-columns:1fr 1fr}
+.chart-box{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px}
+.chart-title{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--green);margin-bottom:12px}
+
+.pulse-marker{width:10px;height:10px;background:var(--red);border-radius:50%;border:2px solid rgba(255,45,85,.4);animation:mpulse 2s ease-in-out infinite}
+@keyframes mpulse{0%,100%{box-shadow:0 0 4px var(--red)}50%{box-shadow:0 0 14px var(--red),0 0 28px rgba(255,45,85,.3)}}
+.server-marker{width:14px;height:14px;background:var(--green);border-radius:50%;border:2px solid rgba(0,255,136,.4);animation:spulse 1.5s ease-in-out infinite}
+@keyframes spulse{0%,100%{box-shadow:0 0 8px var(--green)}50%{box-shadow:0 0 20px var(--green),0 0 40px rgba(0,255,136,.3)}}
+
+#app{display:none;flex-direction:column;height:100vh}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="load-title">HONEYPOT MONITOR</div>
+  <div class="load-sub">THREAT INTELLIGENCE SYSTEM</div>
+  <div class="load-bar"><div class="load-prog" id="prog"></div></div>
+  <div id="load-msg">INITIALIZING...</div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="hdr-top">
+      <span class="title">HONEYPOT MONITOR</span>
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    </div>
+    <div class="stats-bar">
+      <div>ATTACKS&nbsp;<span class="stat-val" id="s-total">—</span></div>
+      <div>UNIQUE IPs&nbsp;<span class="stat-val" id="s-ips">—</span></div>
+      <div>COUNTRIES&nbsp;<span class="stat-val" id="s-countries">—</span></div>
+      <div>UPDATED&nbsp;<span class="stat-val" id="s-time">—</span></div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('map',this)">THREAT MAP</button>
+      <button class="tab" onclick="switchTab('analytics',this)">ANALYTICS</button>
+    </div>
+  </header>
+
+  <div id="tab-map">
+    <div id="map"></div>
+    <div class="sidebar">
+      <div class="sidebar-hdr">RECENT ATTACKS</div>
+      <div class="attack-log" id="attack-log"></div>
+    </div>
+  </div>
+
+  <div id="tab-analytics">
+    <div class="chart-box">
+      <div class="chart-title">TOP PASSWORDS</div>
+      <canvas id="c-pw" height="220"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">TOP USERNAMES</div>
+      <canvas id="c-un" height="220"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">ATTACKS PER HOUR (UTC)</div>
+      <canvas id="c-hr" height="200"></canvas>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">TOP ATTACKING COUNTRIES</div>
+      <canvas id="c-co" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROXY = 'http://178.105.91.221:8080';
+const SERVER_LL = [49.45, 11.07];
+
+let map, geoCache = {}, allAlerts = [], animTimer;
+const charts = {};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const setMsg = t => { document.getElementById('load-msg').textContent = t; };
+const setP = p => { document.getElementById('prog').style.width = p + '%'; };
+
+function timeAgo(ts) {
+  const d = Date.now() - new Date(ts);
+  const m = Math.floor(d / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+function flag(code) {
+  if (!code || code.length !== 2) return '';
+  return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E0 + c.charCodeAt(0) - 65)).join('');
+}
+
+async function getToken() {
+  const r = await fetch(`${PROXY}/security/user/authenticate`, { method: 'POST' });
+  if (!r.ok) throw new Error('Auth failed: ' + r.status);
+  const d = await r.json();
+  return d.data.token;
+}
+
+async function fetchAlerts(token) {
+  const r = await fetch(`${PROXY}/alerts`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!r.ok) throw new Error('Fetch alerts failed: ' + r.status);
+  const d = await r.json();
+  return d.data?.affected_items || [];
+}
+
+async function geoIP(ip) {
+  if (geoCache[ip]) return geoCache[ip];
+  try {
+    const r = await fetch(`${PROXY}/geo/${ip}`);
+    const d = await r.json();
+    if (d.status === 'success') {
+      const mapped = {
+        success: true,
+        latitude: d.lat,
+        longitude: d.lon,
+        country: d.country,
+        country_code: d.countryCode,
+        city: d.city,
+        org: d.org
+      };
+      geoCache[ip] = mapped;
+      return mapped;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function initMap() {
+  map = L.map('map', { center: [25, 10], zoom: 2, zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+
+  const si = L.divIcon({ html: '<div class="server-marker"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
+  L.marker(SERVER_LL, { icon: si }).addTo(map)
+    .bindPopup('<span style="font-family:Share Tech Mono,monospace;color:#00ff88;font-size:13px">YOUR SERVER<br>178.105.91.221<br>Hetzner / Germany</span>');
+}
+
+function addMarkers(ipGroups) {
+  Object.entries(ipGroups).forEach(([ip, data]) => {
+    const geo = geoCache[ip];
+    if (!geo) return;
+    const lat = geo.latitude, lng = geo.longitude;
+
+    L.polyline([[lat,lng], SERVER_LL], { color:'#ff2d55', weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
+
+    const sz = Math.min(6 + Math.floor(data.count / 5), 18);
+    const ai = L.divIcon({
+      html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px"></div>`,
+      className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
+    });
+
+    const org = geo.org || 'Unknown';
+    const isCloud = /alibaba|tencent|amazon|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloud/i.test(org);
+    const providerLabel = isCloud
+      ? `<span style="color:#ff9f0a">&#9888; CLOUD/VPS: ${org}</span>`
+      : `<span style="color:#00d9ff">${org}</span>`;
+
+    const topPW = Object.entries(data.pwCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p).join(', ');
+
+    L.marker([lat,lng], { icon: ai }).addTo(map).bindPopup(`
+      <div style="font-family:'Share Tech Mono',monospace;color:#cdd6f4;font-size:12px;min-width:220px;line-height:1.7">
+        <div style="color:#ff2d55;font-size:14px;margin-bottom:6px">ATTACKER</div>
+        <div><span style="color:#8892a4">IP:</span> ${ip}</div>
+        <div><span style="color:#8892a4">LOCATION:</span> ${flag(geo.country_code)} ${geo.city ? geo.city+', ':''} ${geo.country}</div>
+        <div><span style="color:#8892a4">ASN/ISP:</span> ${providerLabel}</div>
+        <div><span style="color:#8892a4">ATTACKS:</span> <span style="color:#ff9f0a">${data.count}</span></div>
+        ${topPW ? `<div><span style="color:#8892a4">PASSWORDS:</span> ${topPW}</div>` : ''}
+      </div>
+    `);
+  });
+}
+
+function startAttackAnimation(ipGroups) {
+  const sources = Object.keys(ipGroups).map(ip => geoCache[ip]).filter(g => g?.latitude && g?.longitude);
+  if (!sources.length) return;
+  clearInterval(animTimer);
+  animTimer = setInterval(() => {
+    const geo = sources[Math.floor(Math.random() * sources.length)];
+    const line = L.polyline([[geo.latitude,geo.longitude], SERVER_LL], {
+      color: '#ff2d55', weight: 2, opacity: .9, dashArray: '3 5'
+    }).addTo(map);
+    setTimeout(() => { try { map.removeLayer(line); } catch(e){} }, 800);
+  }, 400);
+}
+
+function updateLog(alerts) {
+  const cowrie = alerts.filter(a => a.data?.src_ip).slice(0, 40);
+  document.getElementById('attack-log').innerHTML = cowrie.map(a => {
+    const geo = geoCache[a.data.src_ip];
+    const evt = (a.data.eventid || '').replace('cowrie.','').toUpperCase();
+    const org = geo?.org || '';
+    const shortOrg = org.length > 32 ? org.substring(0,32)+'…' : org;
+    return `<div class="entry">
+      <div class="e-ip">${a.data.src_ip}</div>
+      <div class="e-loc">${geo ? flag(geo.country_code)+' '+geo.country : 'Unknown'}</div>
+      ${shortOrg ? `<div class="e-isp">${shortOrg}</div>` : ''}
+      <div class="e-type">${evt}${a.data.password ? ' | '+a.data.password : ''}</div>
+      <div class="e-time">${timeAgo(a.timestamp)}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateStats(alerts) {
+  const cowrie = alerts.filter(a => a.data?.src_ip);
+  const uIPs = new Set(cowrie.map(a => a.data.src_ip));
+  const uCountries = new Set(Object.values(geoCache).map(g => g.country).filter(Boolean));
+  document.getElementById('s-total').textContent = cowrie.length.toLocaleString();
+  document.getElementById('s-ips').textContent = uIPs.size.toLocaleString();
+  document.getElementById('s-countries').textContent = uCountries.size;
+  document.getElementById('s-time').textContent = new Date().toLocaleTimeString();
+}
+
+const chartDefaults = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color:'#8892a4', font:{family:'Share Tech Mono',size:10} }, grid: { color:'#1a2d3f' } },
+    y: { ticks: { color:'#8892a4', font:{family:'Share Tech Mono',size:10} }, grid: { color:'#1a2d3f' } }
+  }
+};
+
+function buildCharts(alerts) {
+  const cowrie = alerts.filter(a => a.data?.src_ip);
+
+  const pwCount = {};
+  cowrie.filter(a=>a.data?.password).forEach(a => { pwCount[a.data.password]=(pwCount[a.data.password]||0)+1; });
+  const topPW = Object.entries(pwCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
+
+  const unCount = {};
+  cowrie.filter(a=>a.data?.username).forEach(a => { unCount[a.data.username]=(unCount[a.data.username]||0)+1; });
+  const topUN = Object.entries(unCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
+
+  const hrCount = new Array(24).fill(0);
+  cowrie.forEach(a => { if(a.timestamp) hrCount[new Date(a.timestamp).getUTCHours()]++; });
+
+  const countryCount = {};
+  Object.values(geoCache).forEach(g => { if(g.country) countryCount[g.country]=(countryCount[g.country]||0)+1; });
+  const topCo = Object.entries(countryCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  Object.values(charts).forEach(c => c.destroy?.());
+
+  const barStyle = (color) => ({ backgroundColor: color+'44', borderColor: color, borderWidth:1 });
+
+  charts.pw = new Chart(document.getElementById('c-pw'), {
+    type:'bar',
+    data:{ labels:topPW.map(([p])=>p.length>22?p.slice(0,22)+'…':p), datasets:[{ data:topPW.map(([,n])=>n), ...barStyle('#ff2d55') }] },
+    options:{ ...chartDefaults, indexAxis:'y' }
+  });
+
+  charts.un = new Chart(document.getElementById('c-un'), {
+    type:'bar',
+    data:{ labels:topUN.map(([u])=>u), datasets:[{ data:topUN.map(([,n])=>n), ...barStyle('#00d9ff') }] },
+    options:{ ...chartDefaults, indexAxis:'y' }
+  });
+
+  charts.hr = new Chart(document.getElementById('c-hr'), {
+    type:'line',
+    data:{ labels:Array.from({length:24},(_,i)=>i+'h'), datasets:[{ data:hrCount, borderColor:'#00ff88', backgroundColor:'#00ff8820', fill:true, tension:.4, pointRadius:2, pointBackgroundColor:'#00ff88' }] },
+    options:{ ...chartDefaults }
+  });
+
+  const coColors = ['#ff2d55','#ff9f0a','#00d9ff','#00ff88','#af52de','#5ac8fa','#ff6b35','#4cd964','#007aff','#ffcc00'];
+  charts.co = new Chart(document.getElementById('c-co'), {
+    type:'doughnut',
+    data:{
+      labels: topCo.map(([c])=>c),
+      datasets:[{ data:topCo.map(([,n])=>n), backgroundColor:coColors.map(c=>c+'88'), borderColor:coColors, borderWidth:1 }]
+    },
+    options:{ responsive:true, plugins:{ legend:{ display:true, position:'right', labels:{ color:'#8892a4', font:{family:'Share Tech Mono',size:10}, padding:8 } } } }
+  });
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-map').style.display = tab==='map' ? 'flex' : 'none';
+  const at = document.getElementById('tab-analytics');
+  at.style.display = tab==='analytics' ? 'grid' : 'none';
+  if (tab==='map') setTimeout(()=>map.invalidateSize(),50);
+}
+
+async function main() {
+  try {
+    setMsg('CONNECTING TO HONEYPOT API...'); setP(10);
+    const token = await getToken();
+
+    setMsg('FETCHING ALERT DATA...'); setP(25);
+    const alerts = await fetchAlerts(token);
+    allAlerts = alerts;
+
+    const cowrie = alerts.filter(a => a.data?.src_ip);
+    const uniqueIPs = [...new Set(cowrie.map(a => a.data.src_ip))].slice(0, 80);
+    setMsg(`GEOLOCATING ${uniqueIPs.length} UNIQUE IPs...`); setP(40);
+
+    for (let i = 0; i < uniqueIPs.length; i += 5) {
+      await Promise.all(uniqueIPs.slice(i, i+5).map(ip => geoIP(ip)));
+      setP(40 + Math.floor((i / uniqueIPs.length) * 45));
+      await sleep(200);
+    }
+
+    setMsg('BUILDING THREAT MAP...'); setP(90);
+
+    const ipGroups = {};
+    cowrie.forEach(a => {
+      const ip = a.data.src_ip;
+      if (!ipGroups[ip]) ipGroups[ip] = { count:0, pwCount:{} };
+      ipGroups[ip].count++;
+      if (a.data.password) ipGroups[ip].pwCount[a.data.password] = (ipGroups[ip].pwCount[a.data.password]||0)+1;
+    });
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    initMap();
+    addMarkers(ipGroups);
+    startAttackAnimation(ipGroups);
+    updateLog(cowrie);
+    updateStats(alerts);
+    buildCharts(alerts);
+    setP(100);
+
+    setInterval(async () => {
+      try {
+        const t = await getToken();
+        const fresh = await fetchAlerts(t);
+        allAlerts = fresh;
+        updateStats(fresh);
+        updateLog(fresh.filter(a=>a.data?.src_ip));
+        document.getElementById('s-time').textContent = new Date().toLocaleTimeString();
+      } catch(e) {}
+    }, 60000);
+
+  } catch(e) {
+    console.error(e);
+    document.getElementById('load-msg').textContent = 'ERROR: ' + e.message;
+    document.getElementById('load-msg').style.color = '#ff2d55';
+  }
+}
+
+main();
+</script>
+</body>
+</html>
