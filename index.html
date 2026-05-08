@@ -11,9 +11,9 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#050a0f;--bg2:#081420;--bg3:#0c1d2e;
-  --green:#00ff88;--cyan:#00d9ff;--red:#ff2d55;--orange:#ff9f0a;
-  --text:#8892a4;--bright:#cdd6f4;--border:#1a2d3f;
+--bg:#050a0f;--bg2:#081420;--bg3:#0c1d2e;
+--green:#00ff88;--cyan:#00d9ff;--red:#ff2d55;--orange:#ff9f0a;
+--text:#8892a4;--bright:#cdd6f4;--border:#1a2d3f;
 }
 body{background:var(--bg);color:var(--bright);font-family:'Share Tech Mono',monospace;height:100vh;overflow:hidden;display:flex;flex-direction:column}
 body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);pointer-events:none;z-index:9999}
@@ -31,10 +31,8 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 .live-badge{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--red);letter-spacing:2px}
 .live-dot{width:7px;height:7px;background:var(--red);border-radius:50%;animation:blink 1s ease-in-out infinite;box-shadow:0 0 6px var(--red)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-
 .stats-bar{display:flex;gap:24px;font-size:11px;color:var(--text);margin-bottom:8px;flex-wrap:wrap}
 .stat-val{color:var(--cyan);font-size:15px;font-weight:bold}
-
 .tabs{display:flex;gap:2px}
 .tab{background:transparent;border:1px solid var(--border);color:var(--text);padding:5px 18px;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:2px;transition:all .2s}
 .tab.active{background:rgba(0,255,136,.08);border-color:var(--green);color:var(--green)}
@@ -45,7 +43,6 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 .leaflet-container{background:#020810}
 .leaflet-popup-content-wrapper{background:#0c1d2e;border:1px solid var(--border);color:var(--bright);border-radius:4px}
 .leaflet-popup-tip{background:#0c1d2e}
-
 .sidebar{width:260px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .sidebar-hdr{padding:9px 12px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:2px;color:var(--green)}
 .attack-log{flex:1;overflow-y:auto;padding:6px}
@@ -128,9 +125,8 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 </div>
 
 <script>
-const PROXY = 'https://178.105.91.221:8080';
+const PROXY = 'https://178.105.91.221.nip.io:8080';
 const SERVER_LL = [49.45, 11.07];
-
 let map, geoCache = {}, allAlerts = [], animTimer;
 const charts = {};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -191,9 +187,15 @@ async function geoIP(ip) {
 }
 
 function initMap() {
-  map = L.map('map', { center: [25, 10], zoom: 2, zoomControl: true, attributionControl: false });
+  map = L.map('map', {
+    center: [25, 10],
+    zoom: 2,
+    zoomControl: true,
+    attributionControl: false,
+    maxBounds: [[-90, -180], [90, 180]],
+    maxBoundsViscosity: 1.0
+  });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
-
   const si = L.divIcon({ html: '<div class="server-marker"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
   L.marker(SERVER_LL, { icon: si }).addTo(map)
     .bindPopup('<span style="font-family:Share Tech Mono,monospace;color:#00ff88;font-size:13px">YOUR SERVER<br>178.105.91.221<br>Hetzner / Germany</span>');
@@ -204,23 +206,18 @@ function addMarkers(ipGroups) {
     const geo = geoCache[ip];
     if (!geo) return;
     const lat = geo.latitude, lng = geo.longitude;
-
     L.polyline([[lat,lng], SERVER_LL], { color:'#ff2d55', weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
-
     const sz = Math.min(6 + Math.floor(data.count / 5), 18);
     const ai = L.divIcon({
       html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px"></div>`,
       className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
     });
-
     const org = geo.org || 'Unknown';
     const isCloud = /alibaba|tencent|amazon|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloud/i.test(org);
     const providerLabel = isCloud
       ? `<span style="color:#ff9f0a">&#9888; CLOUD/VPS: ${org}</span>`
       : `<span style="color:#00d9ff">${org}</span>`;
-
     const topPW = Object.entries(data.pwCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p).join(', ');
-
     L.marker([lat,lng], { icon: ai }).addTo(map).bindPopup(`
       <div style="font-family:'Share Tech Mono',monospace;color:#cdd6f4;font-size:12px;min-width:220px;line-height:1.7">
         <div style="color:#ff2d55;font-size:14px;margin-bottom:6px">ATTACKER</div>
@@ -285,24 +282,19 @@ const chartDefaults = {
 
 function buildCharts(alerts) {
   const cowrie = alerts.filter(a => a.data?.src_ip);
-
   const pwCount = {};
   cowrie.filter(a=>a.data?.password).forEach(a => { pwCount[a.data.password]=(pwCount[a.data.password]||0)+1; });
   const topPW = Object.entries(pwCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
-
   const unCount = {};
   cowrie.filter(a=>a.data?.username).forEach(a => { unCount[a.data.username]=(unCount[a.data.username]||0)+1; });
   const topUN = Object.entries(unCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
-
   const hrCount = new Array(24).fill(0);
   cowrie.forEach(a => { if(a.timestamp) hrCount[new Date(a.timestamp).getUTCHours()]++; });
-
   const countryCount = {};
   Object.values(geoCache).forEach(g => { if(g.country) countryCount[g.country]=(countryCount[g.country]||0)+1; });
   const topCo = Object.entries(countryCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
 
   Object.values(charts).forEach(c => c.destroy?.());
-
   const barStyle = (color) => ({ backgroundColor: color+'44', borderColor: color, borderWidth:1 });
 
   charts.pw = new Chart(document.getElementById('c-pw'), {
@@ -310,19 +302,16 @@ function buildCharts(alerts) {
     data:{ labels:topPW.map(([p])=>p.length>22?p.slice(0,22)+'…':p), datasets:[{ data:topPW.map(([,n])=>n), ...barStyle('#ff2d55') }] },
     options:{ ...chartDefaults, indexAxis:'y' }
   });
-
   charts.un = new Chart(document.getElementById('c-un'), {
     type:'bar',
     data:{ labels:topUN.map(([u])=>u), datasets:[{ data:topUN.map(([,n])=>n), ...barStyle('#00d9ff') }] },
     options:{ ...chartDefaults, indexAxis:'y' }
   });
-
   charts.hr = new Chart(document.getElementById('c-hr'), {
     type:'line',
     data:{ labels:Array.from({length:24},(_,i)=>i+'h'), datasets:[{ data:hrCount, borderColor:'#00ff88', backgroundColor:'#00ff8820', fill:true, tension:.4, pointRadius:2, pointBackgroundColor:'#00ff88' }] },
     options:{ ...chartDefaults }
   });
-
   const coColors = ['#ff2d55','#ff9f0a','#00d9ff','#00ff88','#af52de','#5ac8fa','#ff6b35','#4cd964','#007aff','#ffcc00'];
   charts.co = new Chart(document.getElementById('c-co'), {
     type:'doughnut',
@@ -347,23 +336,18 @@ async function main() {
   try {
     setMsg('CONNECTING TO HONEYPOT API...'); setP(10);
     const token = await getToken();
-
     setMsg('FETCHING ALERT DATA...'); setP(25);
     const alerts = await fetchAlerts(token);
     allAlerts = alerts;
-
     const cowrie = alerts.filter(a => a.data?.src_ip);
     const uniqueIPs = [...new Set(cowrie.map(a => a.data.src_ip))].slice(0, 80);
     setMsg(`GEOLOCATING ${uniqueIPs.length} UNIQUE IPs...`); setP(40);
-
     for (let i = 0; i < uniqueIPs.length; i += 5) {
       await Promise.all(uniqueIPs.slice(i, i+5).map(ip => geoIP(ip)));
       setP(40 + Math.floor((i / uniqueIPs.length) * 45));
       await sleep(200);
     }
-
     setMsg('BUILDING THREAT MAP...'); setP(90);
-
     const ipGroups = {};
     cowrie.forEach(a => {
       const ip = a.data.src_ip;
@@ -371,10 +355,8 @@ async function main() {
       ipGroups[ip].count++;
       if (a.data.password) ipGroups[ip].pwCount[a.data.password] = (ipGroups[ip].pwCount[a.data.password]||0)+1;
     });
-
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-
     initMap();
     addMarkers(ipGroups);
     startAttackAnimation(ipGroups);
@@ -382,7 +364,6 @@ async function main() {
     updateStats(alerts);
     buildCharts(alerts);
     setP(100);
-
     setInterval(async () => {
       try {
         const t = await getToken();
@@ -393,7 +374,6 @@ async function main() {
         document.getElementById('s-time').textContent = new Date().toLocaleTimeString();
       } catch(e) {}
     }, 60000);
-
   } catch(e) {
     console.error(e);
     document.getElementById('load-msg').textContent = 'ERROR: ' + e.message;
