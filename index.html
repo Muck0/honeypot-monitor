@@ -187,23 +187,37 @@ async function geoIP(ip) {
     const r = await fetch(`${PROXY}/geo/${ip}`);
     const d = await r.json();
     if (d.status === 'success') {
-      const mapped = {
-        success: true,
-        latitude: d.lat,
-        longitude: d.lon,
-        country: d.country,
-        country_code: d.countryCode,
-        city: d.city,
-        org: d.org
-      };
-      geoCache[ip] = mapped;
-      return mapped;
+      geoCache[ip] = d;
+      return d;
     }
   } catch(e) {}
   return null;
 }
 
-function getAsnType(org) {
+async function loadGeoBulk(ips) {
+  try {
+    const r = await fetch(`${PROXY}/geo/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ips })
+    });
+    const d = await r.json();
+    Object.assign(geoCache, d);
+  } catch(e) {}
+}
+
+function getGeo(ip) {
+  const g = geoCache[ip];
+  if (!g) return null;
+  return {
+    latitude: g.lat ?? g.latitude,
+    longitude: g.lon ?? g.longitude,
+    country: g.country,
+    country_code: g.countryCode ?? g.country_code,
+    city: g.city,
+    org: g.org
+  };
+}
   if (!org) return 'isp';
   const o = org.toLowerCase();
   if (/alibaba|tencent|amazon|aws|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloudflare|leaseweb|choopa|quadranet|psychz|tzulo|colocation|datacenter|data.?center|hosting|server|vps|dedicated|cdn|contabo|fastly|akamai/.test(o)) return 'datacenter';
@@ -233,7 +247,7 @@ function initMap() {
 
 function addMarkers(ipGroups) {
   Object.entries(ipGroups).forEach(([ip, data]) => {
-    const geo = geoCache[ip];
+    const geo = getGeo(ip);
     if (!geo) return;
     const lat = geo.latitude, lng = geo.longitude;
     const asnType = getAsnType(geo.org);
@@ -259,7 +273,7 @@ function addMarkers(ipGroups) {
 }
 
 function startAttackAnimation(ipGroups) {
-  const sources = Object.keys(ipGroups).map(ip => geoCache[ip]).filter(g => g?.latitude && g?.longitude);
+  const sources = Object.keys(ipGroups).map(ip => getGeo(ip)).filter(g => g?.latitude && g?.longitude);
   if (!sources.length) return;
   clearInterval(animTimer);
   animTimer = setInterval(() => {
@@ -274,7 +288,7 @@ function startAttackAnimation(ipGroups) {
 function updateLog(alerts) {
   const cowrie = alerts.filter(a => a.data?.src_ip).slice(0, 40);
   document.getElementById('attack-log').innerHTML = cowrie.map(a => {
-    const geo = geoCache[a.data.src_ip];
+    const geo = getGeo(a.data.src_ip);
     const evt = (a.data.eventid || '').replace('cowrie.','').toUpperCase();
     const org = geo?.org || '';
     const shortOrg = org.length > 28 ? org.substring(0,28)+'…' : org;
@@ -293,7 +307,7 @@ function updateLog(alerts) {
 function updateStats(alerts, totalCount) {
   const cowrie = alerts.filter(a => a.data?.src_ip);
   const uIPs = new Set(cowrie.map(a => a.data.src_ip));
-  const uCountries = new Set(Object.values(geoCache).map(g => g.country).filter(Boolean));
+  const uCountries = new Set(Object.keys(geoCache).map(ip => getGeo(ip)?.country).filter(Boolean));
   document.getElementById('s-total').textContent = (totalCount ?? cowrie.length).toLocaleString();
   document.getElementById('s-ips').textContent = uIPs.size.toLocaleString();
   document.getElementById('s-countries').textContent = uCountries.size;
@@ -399,8 +413,9 @@ function buildCharts(alerts) {
   const topUN = Object.entries(unCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
 
   const countryCount = {};
-  Object.values(geoCache).forEach(g => {
-    if (g.country) {
+  Object.keys(geoCache).forEach(ip => {
+    const g = getGeo(ip);
+    if (g?.country) {
       const name = normalizeCountry(g.country);
       countryCount[name] = (countryCount[name] || 0) + 1;
     }
@@ -454,13 +469,16 @@ async function main() {
     const { items: alerts, totalCount } = await fetchAlerts(token);
     allAlerts = alerts;
     const cowrie = alerts.filter(a => a.data?.src_ip);
-    const uniqueIPs = [...new Set(cowrie.map(a => a.data.src_ip))].slice(0, 80);
-    setMsg(`GEOLOCATING ${uniqueIPs.length} UNIQUE IPs...`); setP(40);
-    for (let i = 0; i < uniqueIPs.length; i += 5) {
-      await Promise.all(uniqueIPs.slice(i, i+5).map(ip => geoIP(ip)));
-      setP(40 + Math.floor((i / uniqueIPs.length) * 45));
+    const uniqueIPs = [...new Set(cowrie.map(a => a.data.src_ip))];
+    setMsg(`LOADING GEO DATA FOR ${uniqueIPs.length} UNIQUE IPs...`); setP(40);
+    await loadGeoBulk(uniqueIPs);
+    const uncached = uniqueIPs.filter(ip => !geoCache[ip]).slice(0, 40);
+    for (let i = 0; i < uncached.length; i += 5) {
+      await Promise.all(uncached.slice(i, i+5).map(ip => geoIP(ip)));
+      setP(40 + Math.floor((i / Math.max(uncached.length, 1)) * 45));
       await sleep(200);
     }
+    setP(85);
     setMsg('BUILDING THREAT MAP...'); setP(90);
     const ipGroups = {};
     cowrie.forEach(a => {
