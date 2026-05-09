@@ -238,10 +238,10 @@ function addMarkers(ipGroups) {
     const lat = geo.latitude, lng = geo.longitude;
     const asnType = getAsnType(geo.org);
     const asnInfo = ASN_COLORS[asnType];
-    L.polyline([[lat,lng], SERVER_LL], { color: asnInfo.color, weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
+    L.polyline([[lat,lng], SERVER_LL], { color: '#ff2d55', weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
     const sz = Math.min(6 + Math.floor(data.count / 5), 18);
     const ai = L.divIcon({
-      html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px;background:${asnInfo.color};border-color:${asnInfo.color}55"></div>`,
+      html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px"></div>`,
       className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
     });
     const topPW = Object.entries(data.pwCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p).join(', ');
