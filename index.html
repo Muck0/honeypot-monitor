@@ -218,6 +218,8 @@ function getGeo(ip) {
     org: g.org
   };
 }
+
+function getAsnType(org) {
   if (!org) return 'isp';
   const o = org.toLowerCase();
   if (/alibaba|tencent|amazon|aws|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloudflare|leaseweb|choopa|quadranet|psychz|tzulo|colocation|datacenter|data.?center|hosting|server|vps|dedicated|cdn|contabo|fastly|akamai/.test(o)) return 'datacenter';
