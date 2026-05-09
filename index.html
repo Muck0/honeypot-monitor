@@ -114,12 +114,16 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
       <canvas id="c-un" height="220"></canvas>
     </div>
     <div class="chart-box">
-      <div class="chart-title">ATTACKS PER HOUR (UTC)</div>
+      <div class="chart-title">ATTACKS PER HOUR (LOCAL TIME)</div>
       <canvas id="c-hr" height="200"></canvas>
     </div>
     <div class="chart-box">
+      <div class="chart-title">ATTACKS PER DAY</div>
+      <canvas id="c-day" height="200"></canvas>
+    </div>
+    <div class="chart-box" style="grid-column: span 2">
       <div class="chart-title">TOP ATTACKING COUNTRIES</div>
-      <canvas id="c-co" height="200"></canvas>
+      <canvas id="c-co" height="160"></canvas>
     </div>
   </div>
 </div>
@@ -198,7 +202,7 @@ function initMap() {
     maxBounds: [[-90, -180], [90, 180]],
     maxBoundsViscosity: 1.0
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, noWrap: true }).addTo(map);
   const si = L.divIcon({ html: '<div class="server-marker"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
   L.marker(SERVER_LL, { icon: si }).addTo(map)
     .bindPopup('<span style="font-family:Share Tech Mono,monospace;color:#00ff88;font-size:13px">YOUR SERVER<br>178.105.91.221<br>Hetzner / Germany</span>');
@@ -291,8 +295,21 @@ function buildCharts(alerts) {
   const unCount = {};
   cowrie.filter(a=>a.data?.username).forEach(a => { unCount[a.data.username]=(unCount[a.data.username]||0)+1; });
   const topUN = Object.entries(unCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
+
+  // Hourly in local time
   const hrCount = new Array(24).fill(0);
-  cowrie.forEach(a => { if(a.timestamp) hrCount[new Date(a.timestamp).getUTCHours()]++; });
+  cowrie.forEach(a => { if(a.timestamp) hrCount[new Date(a.timestamp).getHours()]++; });
+
+  // Daily (last 14 days)
+  const dayCount = {};
+  cowrie.forEach(a => {
+    if (!a.timestamp) return;
+    const d = new Date(a.timestamp);
+    const key = d.toLocaleDateString('nl-NL', { day:'2-digit', month:'2-digit' });
+    dayCount[key] = (dayCount[key] || 0) + 1;
+  });
+  const sortedDays = Object.entries(dayCount).slice(-14);
+
   const countryCount = {};
   Object.values(geoCache).forEach(g => { if(g.country) countryCount[g.country]=(countryCount[g.country]||0)+1; });
   const topCo = Object.entries(countryCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
@@ -313,6 +330,11 @@ function buildCharts(alerts) {
   charts.hr = new Chart(document.getElementById('c-hr'), {
     type:'line',
     data:{ labels:Array.from({length:24},(_,i)=>i+'h'), datasets:[{ data:hrCount, borderColor:'#00ff88', backgroundColor:'#00ff8820', fill:true, tension:.4, pointRadius:2, pointBackgroundColor:'#00ff88' }] },
+    options:{ ...chartDefaults }
+  });
+  charts.day = new Chart(document.getElementById('c-day'), {
+    type:'bar',
+    data:{ labels:sortedDays.map(([d])=>d), datasets:[{ data:sortedDays.map(([,n])=>n), ...barStyle('#ff9f0a') }] },
     options:{ ...chartDefaults }
   });
   const coColors = ['#ff2d55','#ff9f0a','#00d9ff','#00ff88','#af52de','#5ac8fa','#ff6b35','#4cd964','#007aff','#ffcc00'];
