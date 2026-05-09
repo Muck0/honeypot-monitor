@@ -66,6 +66,10 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
 .server-marker{width:14px;height:14px;background:var(--green);border-radius:50%;border:2px solid rgba(0,255,136,.4);animation:spulse 1.5s ease-in-out infinite}
 @keyframes spulse{0%,100%{box-shadow:0 0 8px var(--green)}50%{box-shadow:0 0 20px var(--green),0 0 40px rgba(0,255,136,.3)}}
 
+.time-btn{background:transparent;border:1px solid var(--border);color:var(--text);padding:3px 12px;font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;letter-spacing:1px;transition:all .2s}
+.time-btn.active{background:rgba(0,255,136,.08);border-color:var(--green);color:var(--green)}
+.time-btn:hover:not(.active){border-color:var(--text);color:var(--bright)}
+
 #app{display:none;flex-direction:column;height:100vh}
 </style>
 </head>
@@ -113,17 +117,20 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
       <div class="chart-title">TOP USERNAMES</div>
       <canvas id="c-un" height="220"></canvas>
     </div>
-    <div class="chart-box">
-      <div class="chart-title">ATTACKS PER HOUR (LOCAL TIME)</div>
-      <canvas id="c-hr" height="200"></canvas>
-    </div>
-    <div class="chart-box">
-      <div class="chart-title">ATTACKS PER DAY</div>
-      <canvas id="c-day" height="200"></canvas>
+    <div class="chart-box" style="grid-column: span 2">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="chart-title" style="margin-bottom:0">ATTACKS OVER TIME</div>
+        <div style="display:flex;gap:4px">
+          <button class="time-btn active" onclick="setTimeFilter('today',this)">VANDAAG</button>
+          <button class="time-btn" onclick="setTimeFilter('week',this)">WEEK</button>
+          <button class="time-btn" onclick="setTimeFilter('month',this)">MAAND</button>
+        </div>
+      </div>
+      <canvas id="c-time" height="140"></canvas>
     </div>
     <div class="chart-box" style="grid-column: span 2">
       <div class="chart-title">TOP ATTACKING COUNTRIES</div>
-      <canvas id="c-co" height="160"></canvas>
+      <canvas id="c-co" height="140"></canvas>
     </div>
   </div>
 </div>
@@ -199,10 +206,9 @@ function initMap() {
     zoom: 2,
     zoomControl: true,
     attributionControl: false,
-    maxBounds: [[-90, -180], [90, 180]],
-    maxBoundsViscosity: 1.0
+    worldCopyJump: true
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, noWrap: true }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
   const si = L.divIcon({ html: '<div class="server-marker"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
   L.marker(SERVER_LL, { icon: si }).addTo(map)
     .bindPopup('<span style="font-family:Share Tech Mono,monospace;color:#00ff88;font-size:13px">YOUR SERVER<br>178.105.91.221<br>Hetzner / Germany</span>');
@@ -287,34 +293,108 @@ const chartDefaults = {
   }
 };
 
-function buildCharts(alerts) {
+let currentAlerts = [];
+let currentTimeFilter = 'today';
+
+function normalizeCountry(name) {
+  const map = {
+    'The Netherlands': 'Netherlands',
+    'United States of America': 'United States',
+    'USA': 'United States',
+    'Republic of Korea': 'South Korea',
+    'Korea, Republic of': 'South Korea',
+    'Russian Federation': 'Russia',
+  };
+  return map[name] || name;
+}
+
+function setTimeFilter(filter, btn) {
+  currentTimeFilter = filter;
+  document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildTimeChart(currentAlerts);
+}
+
+function buildTimeChart(alerts) {
   const cowrie = alerts.filter(a => a.data?.src_ip);
+  let labels, data, color;
+
+  if (currentTimeFilter === 'today') {
+    const hrCount = new Array(24).fill(0);
+    const today = new Date().toDateString();
+    cowrie.forEach(a => {
+      if (!a.timestamp) return;
+      const d = new Date(a.timestamp);
+      if (d.toDateString() === today) hrCount[d.getHours()]++;
+    });
+    labels = Array.from({length:24}, (_,i) => i+'h');
+    data = hrCount;
+    color = '#00ff88';
+  } else {
+    const days = currentTimeFilter === 'week' ? 7 : 30;
+    const dayCount = {};
+    const now = new Date();
+    for (let i = days-1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toLocaleDateString('nl-NL', { day:'2-digit', month:'2-digit' });
+      dayCount[key] = 0;
+    }
+    cowrie.forEach(a => {
+      if (!a.timestamp) return;
+      const key = new Date(a.timestamp).toLocaleDateString('nl-NL', { day:'2-digit', month:'2-digit' });
+      if (key in dayCount) dayCount[key]++;
+    });
+    labels = Object.keys(dayCount);
+    data = Object.values(dayCount);
+    color = '#ff9f0a';
+  }
+
+  charts.time?.destroy();
+  charts.time = new Chart(document.getElementById('c-time'), {
+    type: currentTimeFilter === 'today' ? 'line' : 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: color,
+        backgroundColor: color + '33',
+        fill: true,
+        tension: .4,
+        pointRadius: 2,
+        pointBackgroundColor: color,
+        borderWidth: 1
+      }]
+    },
+    options: { ...chartDefaults }
+  });
+}
+
+function buildCharts(alerts) {
+  currentAlerts = alerts;
+  const cowrie = alerts.filter(a => a.data?.src_ip);
+
   const pwCount = {};
   cowrie.filter(a=>a.data?.password).forEach(a => { pwCount[a.data.password]=(pwCount[a.data.password]||0)+1; });
   const topPW = Object.entries(pwCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
+
   const unCount = {};
   cowrie.filter(a=>a.data?.username).forEach(a => { unCount[a.data.username]=(unCount[a.data.username]||0)+1; });
   const topUN = Object.entries(unCount).sort((a,b)=>b[1]-a[1]).slice(0,15);
 
-  // Hourly in local time
-  const hrCount = new Array(24).fill(0);
-  cowrie.forEach(a => { if(a.timestamp) hrCount[new Date(a.timestamp).getHours()]++; });
-
-  // Daily (last 14 days)
-  const dayCount = {};
-  cowrie.forEach(a => {
-    if (!a.timestamp) return;
-    const d = new Date(a.timestamp);
-    const key = d.toLocaleDateString('nl-NL', { day:'2-digit', month:'2-digit' });
-    dayCount[key] = (dayCount[key] || 0) + 1;
-  });
-  const sortedDays = Object.entries(dayCount).slice(-14);
-
   const countryCount = {};
-  Object.values(geoCache).forEach(g => { if(g.country) countryCount[g.country]=(countryCount[g.country]||0)+1; });
+  Object.values(geoCache).forEach(g => {
+    if (g.country) {
+      const name = normalizeCountry(g.country);
+      countryCount[name] = (countryCount[name] || 0) + 1;
+    }
+  });
   const topCo = Object.entries(countryCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
 
-  Object.values(charts).forEach(c => c.destroy?.());
+  charts.pw?.destroy();
+  charts.un?.destroy();
+  charts.co?.destroy();
+
   const barStyle = (color) => ({ backgroundColor: color+'44', borderColor: color, borderWidth:1 });
 
   charts.pw = new Chart(document.getElementById('c-pw'), {
@@ -327,16 +407,9 @@ function buildCharts(alerts) {
     data:{ labels:topUN.map(([u])=>u), datasets:[{ data:topUN.map(([,n])=>n), ...barStyle('#00d9ff') }] },
     options:{ ...chartDefaults, indexAxis:'y' }
   });
-  charts.hr = new Chart(document.getElementById('c-hr'), {
-    type:'line',
-    data:{ labels:Array.from({length:24},(_,i)=>i+'h'), datasets:[{ data:hrCount, borderColor:'#00ff88', backgroundColor:'#00ff8820', fill:true, tension:.4, pointRadius:2, pointBackgroundColor:'#00ff88' }] },
-    options:{ ...chartDefaults }
-  });
-  charts.day = new Chart(document.getElementById('c-day'), {
-    type:'bar',
-    data:{ labels:sortedDays.map(([d])=>d), datasets:[{ data:sortedDays.map(([,n])=>n), ...barStyle('#ff9f0a') }] },
-    options:{ ...chartDefaults }
-  });
+
+  buildTimeChart(alerts);
+
   const coColors = ['#ff2d55','#ff9f0a','#00d9ff','#00ff88','#af52de','#5ac8fa','#ff6b35','#4cd964','#007aff','#ffcc00'];
   charts.co = new Chart(document.getElementById('c-co'), {
     type:'doughnut',
