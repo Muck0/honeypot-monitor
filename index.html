@@ -147,7 +147,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const setMsg = t => { document.getElementById('load-msg').textContent = t; };
 const setP = p => { document.getElementById('prog').style.width = p + '%'; };
 
-function timeAgo(ts) {
+function maskIP(ip) {
+  if (!ip) return '';
+  const parts = ip.split('.');
+  if (parts.length === 4) return `${parts[0]}.${parts[1]}.xxx.xxx`;
+  return ip.replace(/:[^:]+:[^:]+$/, ':xxxx:xxxx');
+}
   const d = Date.now() - new Date(ts);
   const m = Math.floor(d / 60000);
   if (m < 1) return 'just now';
@@ -264,7 +269,7 @@ function addMarkers(ipGroups) {
     L.marker([lat,lng], { icon: ai }).addTo(map).bindPopup(`
       <div style="font-family:'Share Tech Mono',monospace;color:#cdd6f4;font-size:12px;min-width:220px;line-height:1.7">
         <div style="color:#ff2d55;font-size:14px;margin-bottom:6px">ATTACKER</div>
-        <div><span style="color:#8892a4">IP:</span> ${ip}</div>
+        <div><span style="color:#8892a4">IP:</span> ${maskIP(ip)}</div>
         <div><span style="color:#8892a4">LOCATION:</span> ${flag(geo.country_code)} ${geo.city ? geo.city+', ':''} ${geo.country}</div>
         <div><span style="color:#8892a4">ASN/ISP:</span> <span style="color:${asnInfo.color}">${asnInfo.label}: ${geo.org || 'Unknown'}</span></div>
         <div><span style="color:#8892a4">ATTACKS:</span> <span style="color:#ff9f0a">${data.count}</span></div>
@@ -297,7 +302,7 @@ function updateLog(alerts) {
     const asnType = getAsnType(org);
     const asnInfo = ASN_COLORS[asnType];
     return `<div class="entry">
-      <div class="e-ip">${a.data.src_ip}</div>
+      <div class="e-ip">${maskIP(a.data.src_ip)}</div>
       <div class="e-loc">${geo ? flag(geo.country_code)+' '+geo.country : 'Unknown'}</div>
       ${shortOrg ? `<div class="e-isp" style="color:${asnInfo.color}">${asnInfo.label.split(' ')[0]} ${shortOrg}</div>` : ''}
       <div class="e-type">${evt}${a.data.password ? ' | '+a.data.password : ''}</div>
