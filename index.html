@@ -153,6 +153,8 @@ function maskIP(ip) {
   if (parts.length === 4) return `${parts[0]}.${parts[1]}.xxx.xxx`;
   return ip.replace(/:[^:]+:[^:]+$/, ':xxxx:xxxx');
 }
+
+function timeAgo(ts) {
   const d = Date.now() - new Date(ts);
   const m = Math.floor(d / 60000);
   if (m < 1) return 'just now';
