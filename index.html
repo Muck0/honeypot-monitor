@@ -86,7 +86,10 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
   <header>
     <div class="hdr-top">
       <span class="title">MUCK'S HONEYPOT MONITOR</span>
-      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="document.getElementById('about-modal').style.display='flex'" style="background:transparent;border:1px solid var(--border);color:var(--text);padding:4px 14px;font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;letter-spacing:2px;transition:all .2s" onmouseover="this.style.borderColor='var(--cyan)';this.style.color='var(--cyan)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">? ABOUT THIS PROJECT</button>
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
     </div>
     <div class="stats-bar">
       <div>ATTACKS SINCE LAUNCH&nbsp;<span class="stat-val" id="s-total">—</span></div>
@@ -200,7 +203,19 @@ async function geoIP(ip) {
   return null;
 }
 
-function initMap() {
+function getAsnType(org) {
+  if (!org) return 'isp';
+  const o = org.toLowerCase();
+  if (/alibaba|tencent|amazon|aws|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloudflare|leaseweb|choopa|quadranet|psychz|tzulo|colocation|datacenter|data.?center|hosting|server|vps|dedicated|cdn|contabo|fastly|akamai/.test(o)) return 'datacenter';
+  if (/tor|proxy|vpn|m247|mullvad|nordvpn|expressvpn|hide\.me|perfect.?privacy|cryptostorm|protonvpn|ipvanish|privateinternetaccess|pia|windscribe|surfshark|cyberghost|botnet|bulletproof|as9009|as34665|as60068|as206485/.test(o)) return 'proxy';
+  return 'isp';
+}
+
+const ASN_COLORS = {
+  datacenter: { color: '#ff9f0a', label: '🏢 DATACENTER' },
+  proxy:      { color: '#af52de', label: '⚠️ PROXY/VPN' },
+  isp:        { color: '#00d9ff', label: '🌐 ISP' }
+};
   map = L.map('map', {
     center: [25, 10],
     zoom: 2,
@@ -219,24 +234,21 @@ function addMarkers(ipGroups) {
     const geo = geoCache[ip];
     if (!geo) return;
     const lat = geo.latitude, lng = geo.longitude;
-    L.polyline([[lat,lng], SERVER_LL], { color:'#ff2d55', weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
+    const asnType = getAsnType(geo.org);
+    const asnInfo = ASN_COLORS[asnType];
+    L.polyline([[lat,lng], SERVER_LL], { color: asnInfo.color, weight:1, opacity:.25, dashArray:'4 8' }).addTo(map);
     const sz = Math.min(6 + Math.floor(data.count / 5), 18);
     const ai = L.divIcon({
-      html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px"></div>`,
+      html: `<div class="pulse-marker" style="width:${sz}px;height:${sz}px;background:${asnInfo.color};border-color:${asnInfo.color}55"></div>`,
       className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
     });
-    const org = geo.org || 'Unknown';
-    const isCloud = /alibaba|tencent|amazon|google|microsoft|azure|digital.?ocean|linode|vultr|ovh|hetzner|oracle|cloud/i.test(org);
-    const providerLabel = isCloud
-      ? `<span style="color:#ff9f0a">&#9888; CLOUD/VPS: ${org}</span>`
-      : `<span style="color:#00d9ff">${org}</span>`;
     const topPW = Object.entries(data.pwCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p).join(', ');
     L.marker([lat,lng], { icon: ai }).addTo(map).bindPopup(`
       <div style="font-family:'Share Tech Mono',monospace;color:#cdd6f4;font-size:12px;min-width:220px;line-height:1.7">
         <div style="color:#ff2d55;font-size:14px;margin-bottom:6px">ATTACKER</div>
         <div><span style="color:#8892a4">IP:</span> ${ip}</div>
         <div><span style="color:#8892a4">LOCATION:</span> ${flag(geo.country_code)} ${geo.city ? geo.city+', ':''} ${geo.country}</div>
-        <div><span style="color:#8892a4">ASN/ISP:</span> ${providerLabel}</div>
+        <div><span style="color:#8892a4">ASN/ISP:</span> <span style="color:${asnInfo.color}">${asnInfo.label}: ${geo.org || 'Unknown'}</span></div>
         <div><span style="color:#8892a4">ATTACKS:</span> <span style="color:#ff9f0a">${data.count}</span></div>
         ${topPW ? `<div><span style="color:#8892a4">PASSWORDS:</span> ${topPW}</div>` : ''}
       </div>
@@ -263,11 +275,13 @@ function updateLog(alerts) {
     const geo = geoCache[a.data.src_ip];
     const evt = (a.data.eventid || '').replace('cowrie.','').toUpperCase();
     const org = geo?.org || '';
-    const shortOrg = org.length > 32 ? org.substring(0,32)+'…' : org;
+    const shortOrg = org.length > 28 ? org.substring(0,28)+'…' : org;
+    const asnType = getAsnType(org);
+    const asnInfo = ASN_COLORS[asnType];
     return `<div class="entry">
       <div class="e-ip">${a.data.src_ip}</div>
       <div class="e-loc">${geo ? flag(geo.country_code)+' '+geo.country : 'Unknown'}</div>
-      ${shortOrg ? `<div class="e-isp">${shortOrg}</div>` : ''}
+      ${shortOrg ? `<div class="e-isp" style="color:${asnInfo.color}">${asnInfo.label.split(' ')[0]} ${shortOrg}</div>` : ''}
       <div class="e-type">${evt}${a.data.password ? ' | '+a.data.password : ''}</div>
       <div class="e-time">${timeAgo(a.timestamp)}</div>
     </div>`;
@@ -481,5 +495,37 @@ async function main() {
 
 main();
 </script>
+
+<!-- About Modal -->
+<div id="about-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:20000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#0c1d2e;border:1px solid #1a2d3f;max-width:680px;width:100%;max-height:85vh;overflow-y:auto;padding:32px;position:relative;font-family:'Share Tech Mono',monospace">
+    <button onclick="document.getElementById('about-modal').style.display='none'" style="position:absolute;top:16px;right:16px;background:transparent;border:none;color:#8892a4;font-size:20px;cursor:pointer;line-height:1">✕</button>
+    <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:#00ff88;letter-spacing:3px;margin-bottom:24px">ABOUT THIS PROJECT</div>
+
+    <div style="color:#00d9ff;font-size:11px;letter-spacing:2px;margin-bottom:8px">WHAT IS A HONEYPOT?</div>
+    <div style="color:#cdd6f4;font-size:12px;line-height:1.8;margin-bottom:20px">
+      A honeypot is a decoy server that is intentionally made to look attractive to hackers. Think of it as a trap: the server appears real, but contains nothing of value. As soon as an attacker connects, all their actions are recorded. This allows us to study how attacks work, which passwords are used and where attackers come from, without putting real systems at risk.
+    </div>
+
+    <div style="color:#00d9ff;font-size:11px;letter-spacing:2px;margin-bottom:8px">WHAT IS COWRIE?</div>
+    <div style="color:#cdd6f4;font-size:12px;line-height:1.8;margin-bottom:20px">
+      Cowrie is the honeypot software running on this server. It simulates a Linux system over SSH, the same technology administrators use to remotely access servers. Attackers believe they are breaking into a real server, but are actually inside a completely fake environment. Cowrie logs every login attempt, every password tried and every command executed.
+    </div>
+
+    <div style="color:#00d9ff;font-size:11px;letter-spacing:2px;margin-bottom:8px">WHAT IS WAZUH?</div>
+    <div style="color:#cdd6f4;font-size:12px;line-height:1.8;margin-bottom:20px">
+      Wazuh is a SIEM: a security platform that collects, analyzes and generates alerts from log data. It receives all data from Cowrie and converts it into structured events. This dashboard fetches those events and visualizes them in real time on the world map.
+    </div>
+
+    <div style="color:#00d9ff;font-size:11px;letter-spacing:2px;margin-bottom:8px">WHAT IS THIS USED FOR?</div>
+    <div style="color:#cdd6f4;font-size:12px;line-height:1.8;margin-bottom:24px">
+      Honeypots are used worldwide by security researchers and organizations to analyze attack patterns, detect new techniques early and improve security policies. This project was built as part of a cybersecurity program at Fontys University of Applied Sciences, to gain hands-on experience with real attack data.
+    </div>
+
+    <div style="border-top:1px solid #1a2d3f;padding-top:16px;color:#556070;font-size:11px">
+      Built by Muck · Fontys ICT · Semester 1 · Stack: Cowrie + Wazuh + Hetzner VPS
+    </div>
+  </div>
+</div>
 </body>
 </html>
