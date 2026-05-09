@@ -85,7 +85,7 @@ header{background:linear-gradient(180deg,#071422,var(--bg));border-bottom:1px so
       <div class="live-badge"><div class="live-dot"></div>LIVE</div>
     </div>
     <div class="stats-bar">
-      <div>ATTACKS&nbsp;<span class="stat-val" id="s-total">—</span></div>
+      <div>ATTACKS SINCE LAUNCH&nbsp;<span class="stat-val" id="s-total">—</span></div>
       <div>UNIQUE IPs&nbsp;<span class="stat-val" id="s-ips">—</span></div>
       <div>COUNTRIES&nbsp;<span class="stat-val" id="s-countries">—</span></div>
       <div>UPDATED&nbsp;<span class="stat-val" id="s-time">—</span></div>
@@ -161,7 +161,10 @@ async function fetchAlerts(token) {
   });
   if (!r.ok) throw new Error('Fetch alerts failed: ' + r.status);
   const d = await r.json();
-  return d.data?.affected_items || [];
+  return {
+    items: d.data?.affected_items || [],
+    totalCount: d.data?.total_count ?? null
+  };
 }
 
 async function geoIP(ip) {
@@ -261,11 +264,11 @@ function updateLog(alerts) {
   }).join('');
 }
 
-function updateStats(alerts) {
+function updateStats(alerts, totalCount) {
   const cowrie = alerts.filter(a => a.data?.src_ip);
   const uIPs = new Set(cowrie.map(a => a.data.src_ip));
   const uCountries = new Set(Object.values(geoCache).map(g => g.country).filter(Boolean));
-  document.getElementById('s-total').textContent = cowrie.length.toLocaleString();
+  document.getElementById('s-total').textContent = (totalCount ?? cowrie.length).toLocaleString();
   document.getElementById('s-ips').textContent = uIPs.size.toLocaleString();
   document.getElementById('s-countries').textContent = uCountries.size;
   document.getElementById('s-time').textContent = new Date().toLocaleTimeString();
@@ -337,7 +340,7 @@ async function main() {
     setMsg('CONNECTING TO HONEYPOT API...'); setP(10);
     const token = await getToken();
     setMsg('FETCHING ALERT DATA...'); setP(25);
-    const alerts = await fetchAlerts(token);
+    const { items: alerts, totalCount } = await fetchAlerts(token);
     allAlerts = alerts;
     const cowrie = alerts.filter(a => a.data?.src_ip);
     const uniqueIPs = [...new Set(cowrie.map(a => a.data.src_ip))].slice(0, 80);
@@ -361,15 +364,15 @@ async function main() {
     addMarkers(ipGroups);
     startAttackAnimation(ipGroups);
     updateLog(cowrie);
-    updateStats(alerts);
+    updateStats(alerts, totalCount);
     buildCharts(alerts);
     setP(100);
     setInterval(async () => {
       try {
         const t = await getToken();
-        const fresh = await fetchAlerts(t);
+        const { items: fresh, totalCount: freshTotal } = await fetchAlerts(t);
         allAlerts = fresh;
-        updateStats(fresh);
+        updateStats(fresh, freshTotal);
         updateLog(fresh.filter(a=>a.data?.src_ip));
         document.getElementById('s-time').textContent = new Date().toLocaleTimeString();
       } catch(e) {}
